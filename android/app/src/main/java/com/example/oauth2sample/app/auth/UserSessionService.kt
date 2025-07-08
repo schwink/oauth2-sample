@@ -184,10 +184,12 @@ class UserSessionService(
                         serviceConfiguration: AuthorizationServiceConfiguration?,
                         ex: AuthorizationException?
                     ) {
-                        if (ex != null || serviceConfiguration == null) {
-                            cont.resumeWithException(Exception(ex))
-                        } else {
+                        if (serviceConfiguration != null) {
                             cont.resume(serviceConfiguration)
+                        } else if (ex != null) {
+                            cont.resumeWithException(ex)
+                        } else {
+                            cont.resumeWithException(Exception("Unknown error"))
                         }
                     }
                 },
@@ -228,8 +230,10 @@ class UserSessionService(
 
                         if (response != null) {
                             cont.resume(Unit)
+                        } else if (ex != null) {
+                            cont.resumeWithException(ex)
                         } else {
-                            cont.resumeWithException(Throwable(ex))
+                            cont.resumeWithException(Exception("Unknown error"))
                         }
                     }
                 })
@@ -277,8 +281,10 @@ class UserSessionService(
                             if (accessToken != null && idToken != null) {
                                 val result = action(accessToken, idToken)
                                 cont.resume(result)
+                            } else if (ex != null) {
+                                cont.resumeWithException(ex)
                             } else {
-                                cont.resumeWithException(Exception(ex))
+                                cont.resumeWithException(Exception("Unknown error"))
                             }
                         }
                     })
