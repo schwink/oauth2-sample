@@ -15,6 +15,9 @@ oauth2:
 expiry:
   signingKeys: "4h"
   idTokens: "1h"
+  refreshTokens:
+    # Tolerate concurrent requests using the same token without rotating in between
+    reuseInterval: "1h"
 staticClients:
 - id: oauth2-proxy
   redirectURIs:
