@@ -37,12 +37,13 @@ import kotlin.coroutines.suspendCoroutine
 
 private val Context.authDataStore: DataStore<Preferences> by preferencesDataStore(name = "authState")
 private val AUTH_STATE_PREFERENCES_KEY = stringPreferencesKey("authState")
+private val SERVICE_CONFIGURATION_PREFERENCES_KEY = stringPreferencesKey("serviceConfiguration")
 
 internal class AuthStateStore(
     private val context: Context,
 ) {
 
-    val state: Flow<AuthState?> = context.authDataStore.data.map { preferences ->
+    val authState: Flow<AuthState?> = context.authDataStore.data.map { preferences ->
         val json = preferences[AUTH_STATE_PREFERENCES_KEY]
         if (json == null) {
             null
@@ -55,7 +56,21 @@ internal class AuthStateStore(
         }
     }
 
-    suspend fun update(authState: AuthState?) {
+    val serviceConfiguration: Flow<AuthorizationServiceConfiguration?> =
+        context.authDataStore.data.map { preferences ->
+            val json = preferences[SERVICE_CONFIGURATION_PREFERENCES_KEY]
+            if (json == null) {
+                null
+            } else {
+                try {
+                    AuthorizationServiceConfiguration.fromJson(json)
+                } catch (_: JSONException) {
+                    null
+                }
+            }
+        }
+
+    internal suspend fun updateAuthState(authState: AuthState?) {
         context.authDataStore.updateData { preferences ->
             val mutablePreferences = preferences.toMutablePreferences()
             if (authState == null) {
@@ -64,6 +79,17 @@ internal class AuthStateStore(
                 val json = authState.jsonSerializeString()
                 mutablePreferences[AUTH_STATE_PREFERENCES_KEY] = json
             }
+
+            mutablePreferences
+        }
+    }
+
+    internal suspend fun updateServiceConfiguration(serviceConfiguration: AuthorizationServiceConfiguration) {
+        context.authDataStore.updateData { preferences ->
+            val mutablePreferences = preferences.toMutablePreferences()
+
+            val json = serviceConfiguration.toJsonString()
+            mutablePreferences[SERVICE_CONFIGURATION_PREFERENCES_KEY] = json
 
             mutablePreferences
         }
@@ -125,22 +151,11 @@ class UserSessionService(
 
     init {
         coroutineScope.launch {
-            val initialAuthState = authStateStore.state.first()
-            val initialServiceConfiguration =
-                initialAuthState?.authorizationServiceConfiguration
+            // Update service configuration on app launch
+            val serviceConfiguration = fetchServiceConfiguration()
+            authStateStore.updateServiceConfiguration(serviceConfiguration)
 
-            if (initialServiceConfiguration == null) {
-                val serviceConfiguration = fetchServiceConfiguration()
-
-                if (initialAuthState == null) {
-                    // Write an empty state with the configuration into the store, to persist it
-                    authStateStore.update(AuthState(serviceConfiguration))
-                }
-
-                serviceConfiguration
-            }
-
-            authStateStore.state.map { authState ->
+            authStateStore.authState.map { authState ->
                 if (authState == null) {
                     LoginState.LoggedOut
                 } else if (authState.isAuthorized == true) {
@@ -166,7 +181,8 @@ class UserSessionService(
     }
 
     internal suspend fun serviceConfiguration(): AuthorizationServiceConfiguration {
-        return authStateStore.state.first()?.authorizationServiceConfiguration
+        return authStateStore.serviceConfiguration.first()
+            ?: authStateStore.authState.first()?.authorizationServiceConfiguration
             ?: fetchServiceConfiguration()
     }
 
@@ -201,16 +217,16 @@ class UserSessionService(
         resp: AuthorizationResponse?,
         ex: AuthorizationException?
     ) {
-        var authState = authStateStore.state.first() ?: AuthState()
+        var authState = authStateStore.authState.first() ?: AuthState()
         authState = authState.copyUpdate({ authState -> authState.update(resp, ex) })
-        authStateStore.update(authState)
+        authStateStore.updateAuthState(authState)
 
         resp?.let {
             val tokenRequest = it.createTokenExchangeRequest()
             performTokenExchange(authState, tokenRequest)
         }
 
-        authStateStore.update(authState)
+        authStateStore.updateAuthState(authState)
     }
 
     private suspend fun performTokenExchange(
@@ -291,11 +307,11 @@ class UserSessionService(
             }
         } finally {
             // The state may have been updated with fresh tokens
-            authStateStore.update(newAuthState)
+            authStateStore.updateAuthState(newAuthState)
         }
     }
 
     suspend fun logOut() {
-        authStateStore.update(null)
+        authStateStore.updateAuthState(null)
     }
 }
