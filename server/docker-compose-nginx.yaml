@@ -35,8 +35,10 @@ services:
       etcd: {}
       httpbin: {}
     depends_on:
-      - dex
-      - httpbin
+      dex:
+        condition: service_healthy
+      httpbin:
+        condition: service_started
   nginx:
     depends_on:
       - oauth2-proxy
@@ -70,6 +72,11 @@ services:
       etcd: {}
     depends_on:
       - etcd
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://dex.localtest.me:4190/dex/.well-known/openid-configuration"]
+      start_period: 11s
+      start_interval: 2s
+      interval: 1m
   httpbin:
     container_name: httpbin
     image: kennethreitz/httpbin
