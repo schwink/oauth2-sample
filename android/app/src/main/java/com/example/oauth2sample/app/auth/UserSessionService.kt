@@ -2,6 +2,7 @@ package com.example.oauth2sample.app.auth
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.core.net.toUri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -9,11 +10,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.openid.appauth.AppAuthConfiguration
 import net.openid.appauth.AuthState
@@ -146,37 +147,50 @@ class UserSessionService(
         ) : LoginState()
     }
 
-    private val _state = MutableStateFlow<LoginState>(LoginState.Loading)
-    val state: StateFlow<LoginState> = _state.asStateFlow()
+    val state: StateFlow<LoginState> = authStateStore.authState.map { authState ->
+        if (authState == null) {
+            LoginState.LoggedOut
+        } else if (authState.isAuthorized == true) {
+            val claims =
+                authState.parsedIdToken?.additionalClaims ?: mapOf<String, Any>()
+            val email = claims["email"] as String?
+            val username = claims["name"] as String?
+
+            val userSession = UserSession(
+                service = this@UserSessionService,
+                authState = authState,
+                username = username,
+                email = email
+            )
+            LoginState.LoggedIn(
+                userSession = userSession
+            )
+        } else {
+            LoginState.LoggedOut
+        }
+    }.stateIn(
+        coroutineScope,
+        SharingStarted.Eagerly,
+        LoginState.Loading
+    )
 
     init {
         coroutineScope.launch {
             // Update service configuration on app launch
-            val serviceConfiguration = fetchServiceConfiguration()
-            authStateStore.updateServiceConfiguration(serviceConfiguration)
-
-            authStateStore.authState.map { authState ->
-                if (authState == null) {
-                    LoginState.LoggedOut
-                } else if (authState.isAuthorized == true) {
-                    val claims =
-                        authState.parsedIdToken?.additionalClaims ?: mapOf<String, Any>()
-                    val email = claims["email"] as String?
-                    val username = claims["name"] as String?
-
-                    val userSession = UserSession(
-                        service = this@UserSessionService,
-                        authState = authState,
-                        username = username,
-                        email = email
-                    )
-                    LoginState.LoggedIn(
-                        userSession = userSession
-                    )
-                } else {
-                    LoginState.LoggedOut
-                }
-            }.collect { _state.emit(it) }
+            try {
+                val serviceConfiguration = fetchServiceConfiguration()
+                authStateStore.updateServiceConfiguration(serviceConfiguration)
+                Log.w(
+                    TAG,
+                    "Refreshed OAuth service configuration",
+                )
+            } catch (ex: Exception) {
+                Log.e(
+                    TAG,
+                    "Failed startup refresh of OAuth service configuration",
+                    ex
+                )
+            }
         }
     }
 
@@ -313,5 +327,9 @@ class UserSessionService(
 
     suspend fun logOut() {
         authStateStore.updateAuthState(null)
+    }
+
+    companion object {
+        val TAG: String = "UserSessionService"
     }
 }
