@@ -9,6 +9,6 @@ data class UserSession(
     val email: String?,
 ) {
 
-    suspend fun <T> withTokens(action: (authToken: String, idToken: String) -> T): T =
+    suspend fun <T> withTokens(action: suspend (accessToken: String, idToken: String) -> T): T =
         service.withTokens(authState, action)
 }

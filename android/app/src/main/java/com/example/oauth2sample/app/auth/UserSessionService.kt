@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import net.openid.appauth.AppAuthConfiguration
 import net.openid.appauth.AuthState
 import net.openid.appauth.AuthorizationException
@@ -180,10 +181,6 @@ class UserSessionService(
             try {
                 val serviceConfiguration = fetchServiceConfiguration()
                 authStateStore.updateServiceConfiguration(serviceConfiguration)
-                Log.w(
-                    TAG,
-                    "Refreshed OAuth service configuration",
-                )
             } catch (ex: Exception) {
                 Log.e(
                     TAG,
@@ -271,7 +268,7 @@ class UserSessionService(
 
     suspend fun <T> withTokens(
         authState: AuthState,
-        action: (accessToken: String, idToken: String) -> T
+        action: suspend (accessToken: String, idToken: String) -> T
     ): T {
         return withTokens(authState, false, action)
     }
@@ -279,7 +276,7 @@ class UserSessionService(
     internal suspend fun <T> withTokens(
         authState: AuthState,
         forceTokenRefresh: Boolean,
-        action: (accessToken: String, idToken: String) -> T
+        action: suspend (accessToken: String, idToken: String) -> T
     ): T {
         val currentState = state.first()
         if (currentState !is LoginState.LoggedIn) {
@@ -309,8 +306,14 @@ class UserSessionService(
                             ex: AuthorizationException?
                         ) {
                             if (accessToken != null && idToken != null) {
-                                val result = action(accessToken, idToken)
-                                cont.resume(result)
+                                try {
+                                    val result = runBlocking {
+                                        action(accessToken, idToken)
+                                    }
+                                    cont.resume(result)
+                                } catch (innerEx: Exception) {
+                                    cont.resumeWithException(innerEx)
+                                }
                             } else if (ex != null) {
                                 cont.resumeWithException(ex)
                             } else {
