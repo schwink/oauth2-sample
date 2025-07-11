@@ -24,7 +24,10 @@ import androidx.compose.ui.unit.dp
 import com.example.oauth2sample.ui.theme.Typography
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
+@OptIn(ExperimentalEncodingApi::class)
 @Composable
 fun AuthStatusScreen(userSessionService: UserSessionService) {
     val authStateStore by remember { derivedStateOf { userSessionService.authStateStore } }
@@ -54,6 +57,15 @@ fun AuthStatusScreen(userSessionService: UserSessionService) {
 
     val tokenInfo: List<Pair<String, String?>> by remember {
         derivedStateOf {
+            val accessTokenParts = authState?.accessToken?.split('.')
+            val accessTokenPayload = accessTokenParts?.let {
+                val base64 = Base64.Default.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
+                val payload = base64.decode(it[1]).toString(Charsets.UTF_8)
+
+                // Parse and re-format the JSON so it's pretty
+                JSONObject(payload).toString(2)
+            }
+
             val idTokenCustomClaimsJson = JSONObject()
             authState?.parsedIdToken?.additionalClaims?.forEach { (key, value) ->
                 idTokenCustomClaimsJson.put(key, value)
@@ -66,6 +78,7 @@ fun AuthStatusScreen(userSessionService: UserSessionService) {
                 Pair("refreshToken", authState?.refreshToken),
                 Pair("needsTokenRefresh", authState?.needsTokenRefresh?.toString()),
                 Pair("accessToken", authState?.accessToken),
+                Pair("accessToken payload (decoded JWT payload)", accessTokenPayload),
                 Pair("idToken", authState?.idToken),
                 Pair("idToken custom claims", idTokenCustomClaims),
             )
