@@ -10,7 +10,7 @@ All web services are configured to be hosted locally with [Docker](https://docs.
 
 ## Why would I use this?
 
-- Easy local development of early-stage apps, before taking a dependency on a cloud service like [Firebase](https://firebase.google.com/docs/auth/android/firebaseui), etc.
+- Local development of early-stage apps, before taking a dependency on a cloud service like [Firebase](https://firebase.google.com/docs/auth/android/firebaseui), etc.
 - Self host a basic system for personal projects. The setup demonstrated here does not have any affordances for sign up or account creation, but could be ideal for adding auth to hobby services with a small audience.
 
 ## The Dex identity provider
